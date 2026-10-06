@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+.specify/
+.claude/
+.agents/
+.codex/
+.cursor/
+.beads/
+specs/
+*.md

@@ -1,0 +1,28 @@
+{
+  "name": "claude-pointer-workspace",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "extension",
+    "helper"
+  ],
+  "scripts": {
+    "build": "npm run build -w helper && npm run build -w extension",
+    "typecheck": "npm run typecheck -w helper && npm run typecheck -w extension",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test": "npm test -w helper && npm test -w extension",
+    "test:e2e": "npm run build && npm run test:e2e -w extension",
+    "lint:ext": "npm run build -w extension && web-ext lint --source-dir extension/dist --warnings-as-errors",
+    "check": "sh scripts/check.sh"
+  },
+  "devDependencies": {
+    "eslint": "^10.12.0",
+    "prettier": "^3.9.9",
+    "typescript-eslint": "^8.71.1",
+    "web-ext": "^10.7.0"
+  }
+}

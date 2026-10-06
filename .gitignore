@@ -5,3 +5,15 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Node / build
+node_modules/
+extension/dist/
+helper/dist/
+coverage/
+*.xpi
+web-ext-artifacts/
+*.log
+.env*
+.vitest/
+extension/dist-e2e/
