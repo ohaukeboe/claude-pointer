@@ -1,0 +1,23 @@
+{
+  "name": "claude-pointer-extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+  },
+  "devDependencies": {
+    "@types/firefox-webext-browser": "*",
+    "@types/node": "^24",
+    "@types/selenium-webdriver": "*",
+    "@vitest/coverage-v8": "^5.0.3",
+    "@webext-core/fake-browser": "^2.0.1",
+    "esbuild": "^0.28.2",
+    "happy-dom": "^20.14.5",
+    "selenium-webdriver": "^4.50.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

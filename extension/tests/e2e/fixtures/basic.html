@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shelf admin</title>
+    <style>
+      body {
+        font: 16px system-ui;
+        margin: 24px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        max-width: 640px;
+      }
+      td {
+        border: 1px solid #ccc;
+        padding: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="title">Review queue</h1>
+    <table class="review-queue">
+      <tr>
+        <td>[VIZ Media] Vagabond</td>
+        <td>Review</td>
+      </tr>
+      <tr>
+        <td>20th_Century_Boys_v02.cbz</td>
+        <td>Review</td>
+      </tr>
+    </table>
+    <p>
+      <a id="link" href="#navigated">Open details</a>
+      <button id="btn" type="button">Approve</button>
+    </p>
+    <script>
+      window.__clicked = [];
+      document
+        .getElementById("link")
+        .addEventListener("click", () => window.__clicked.push("link"));
+      document.getElementById("btn").addEventListener("click", () => window.__clicked.push("btn"));
+    </script>
+  </body>
+</html>

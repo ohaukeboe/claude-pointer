@@ -1,0 +1,141 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1f1e1d;
+  --muted: #6b6a68;
+  --border: #d6d3cd;
+  --accent: #c15f3c;
+  --accent-fg: #ffffff;
+  --ok: #2e7d4f;
+  --error: #b3261e;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #262624;
+    --fg: #f0eee9;
+    --muted: #a8a59f;
+    --border: #45433f;
+    --accent: #d97757;
+    --ok: #7fcf9b;
+    --error: #ff8a80;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+body {
+  width: min(22rem, 100vw);
+  min-width: 16rem;
+  font:
+    14px/1.4 system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+main {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+h1 {
+  margin: 0;
+  font-size: 15px;
+}
+h2 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: var(--muted);
+}
+.error {
+  color: var(--error);
+}
+.mono {
+  font:
+    12px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  overflow-wrap: anywhere;
+}
+button {
+  min-height: 2rem;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+button.primary {
+  width: 100%;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+li {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.sessions button {
+  width: 100%;
+  text-align: left;
+}
+.history li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+}
+.state-delivered {
+  color: var(--ok);
+}
+.state-failed {
+  color: var(--error);
+}
+kbd {
+  font:
+    12px ui-monospace,
+    monospace;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
