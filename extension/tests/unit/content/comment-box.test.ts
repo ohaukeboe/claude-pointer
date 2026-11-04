@@ -1,119 +1,117 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCommentBox, positionBox } from "../../../src/content/overlay/comment-box";
+import {
+  createCommentBox,
+  positionBox,
+  type CommentBoxOptions,
+} from "../../../src/content/overlay/comment-box";
+import type { FrameMessage, ViewMessage } from "../../../src/frame/protocol";
 import { createOverlay } from "../../../src/content/overlay/root";
 
 const anchor = { left: 100, top: 100, width: 200, height: 50 };
+const FRAME_URL = "moz-extension://6d1f3c52/comment-frame.html";
 
-function box(over: Partial<Parameters<typeof createCommentBox>[0]> = {}) {
-  const overlay = createOverlay(document, "open");
+/** A box whose frame is faked: the test plays the frame on the other end of the port. */
+function box(over: Partial<CommentBoxOptions> = {}) {
   const onSend = vi.fn();
   const onAdd = vi.fn();
   const onClose = vi.fn();
-  const b = createCommentBox({
-    anchor,
-    label: "table.queue",
-    allowAdd: false,
-    onSend,
-    onAdd,
-    onClose,
-    ...over,
-  });
-  overlay.layer.append(b.el);
-  const q = <T extends Element>(s: string) => b.el.querySelector(s) as T;
-  return { overlay, b, onSend, onAdd, onClose, q };
+  const b = createCommentBox(
+    { anchor, label: "table.queue", allowAdd: false, onSend, onAdd, onClose, ...over },
+    document,
+    FRAME_URL,
+  );
+  const frame = b.el as HTMLIFrameElement;
+  const postMessage = vi.fn();
+  Object.defineProperty(frame, "contentWindow", { value: { postMessage } });
+  const got: ViewMessage[] = [];
+  let port: MessagePort | null = null;
+  /** Fire the frame's load event and take the port the box hands over. */
+  const load = async () => {
+    frame.dispatchEvent(new Event("load"));
+    const call = postMessage.mock.calls.at(-1)!;
+    port = (call[2] as MessagePort[])[0]!;
+    port.onmessage = (e: MessageEvent<ViewMessage>) => got.push(e.data);
+    await vi.waitFor(() => expect(got.length).toBeGreaterThan(0));
+    return call;
+  };
+  const reply = (m: FrameMessage) => port!.postMessage(m);
+  return { b, frame, postMessage, load, got, reply, onSend, onAdd, onClose };
 }
 
-function type(t: HTMLTextAreaElement, value: string) {
-  t.value = value;
-  t.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-describe("comment box", () => {
-  it("opens with a focused textarea and the element label", () => {
-    const { b, q } = box();
-    expect(b.textarea).toBe(q("textarea"));
-    expect(b.el.getRootNode()).toBeInstanceOf(ShadowRoot);
-    expect(q("[data-role=label]").textContent).toBe("table.queue");
-    b.focus();
-    expect((b.el.getRootNode() as ShadowRoot).activeElement).toBe(b.textarea);
+describe("comment box (content side)", () => {
+  it("is an iframe on the extension's frame page with a secret nonce", () => {
+    const { frame } = box();
+    expect(frame.localName).toBe("iframe");
+    const url = new URL(frame.src);
+    expect(`${url.protocol}//${url.host}${url.pathname}`).toBe(FRAME_URL);
+    expect(url.hash.length).toBeGreaterThan(16);
+    expect(box().frame.src).not.toBe(frame.src);
   });
 
-  it("disables Send to Claude for empty or whitespace text (FR-007)", () => {
-    const { b, q } = box();
-    const send = q<HTMLButtonElement>("[data-action=send]");
-    expect(send.textContent).toBe("Send to Claude");
-    expect(send.disabled).toBe(true);
-    type(b.textarea, "   \n ");
-    expect(send.disabled).toBe(true);
-    type(b.textarea, " make it denser ");
-    expect(send.disabled).toBe(false);
-    send.click();
-    expect(b.textarea.value).toBe(" make it denser ");
+  it("hands its port only to the extension origin, with the nonce, then sends init", async () => {
+    const { frame, load, got } = box({ initialText: "kept", allowAdd: true, addLabel: "Save" });
+    const [data, targetOrigin, transfer] = await load();
+    expect(targetOrigin).toBe("moz-extension://6d1f3c52");
+    expect(data).toEqual({ type: "claude-pointer-init", nonce: new URL(frame.src).hash.slice(1) });
+    expect(transfer).toHaveLength(1);
+    expect(got[0]).toEqual({
+      type: "init",
+      label: "table.queue",
+      allowAdd: true,
+      addLabel: "Save",
+      canDelete: false,
+      initialText: "kept",
+    });
   });
 
-  it("sends trimmed text", () => {
-    const { b, q, onSend } = box();
-    type(b.textarea, "  denser  ");
-    q<HTMLButtonElement>("[data-action=send]").click();
+  it("turns frame messages into callbacks", async () => {
+    const onDelete = vi.fn();
+    const { load, reply, onSend, onAdd, onClose } = box({ onDelete });
+    await load();
+    reply({ type: "send", text: "denser" });
+    reply({ type: "add", text: "note" });
+    reply({ type: "delete" });
+    reply({ type: "close" });
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSend).toHaveBeenCalledWith("denser");
-  });
-
-  it("sends with Ctrl+Enter", () => {
-    const { b, onSend } = box();
-    type(b.textarea, "x");
-    b.textarea.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }),
-    );
-    expect(onSend).toHaveBeenCalledWith("x");
-  });
-
-  it("blocks text over 10 000 chars with a message", () => {
-    const { b, q } = box();
-    type(b.textarea, "a".repeat(10_001));
-    expect(q<HTMLButtonElement>("[data-action=send]").disabled).toBe(true);
-    expect(q("[data-role=status]").textContent).toContain("10 001 / 10 000");
-    type(b.textarea, "a".repeat(10_000));
-    expect(q<HTMLButtonElement>("[data-action=send]").disabled).toBe(false);
-  });
-
-  it("closes on Escape and on the close control without sending", () => {
-    const { b, q, onClose, onSend } = box();
-    type(b.textarea, "draft");
-    b.textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    q<HTMLButtonElement>("[data-action=close]").click();
-    expect(onClose).toHaveBeenCalledTimes(2);
-    expect(onSend).not.toHaveBeenCalled();
-  });
-
-  it("hides Add comment unless allowed", () => {
-    expect(box().q<HTMLButtonElement>("[data-action=add]").hidden).toBe(true);
-    const { b, q, onAdd } = box({ allowAdd: true });
-    const add = q<HTMLButtonElement>("[data-action=add]");
-    expect(add.hidden).toBe(false);
-    expect(add.textContent).toBe("Add comment");
-    type(b.textarea, " note ");
-    add.click();
     expect(onAdd).toHaveBeenCalledWith("note");
+    expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  it("shows status and disables controls while busy", () => {
-    const { b, q } = box();
-    type(b.textarea, "x");
+  it("forwards busy, status and focus to the frame", async () => {
+    const { b, load, got } = box();
+    await load();
     b.setBusy(true);
-    b.setStatus("info", "Sending…");
-    expect(q<HTMLButtonElement>("[data-action=send]").disabled).toBe(true);
-    expect(b.textarea.readOnly).toBe(true);
-    expect(q("[data-role=status]").textContent).toBe("Sending…");
-    b.setBusy(false);
     b.setStatus("error", "Session ended");
-    expect(q("[data-role=status]").getAttribute("data-kind")).toBe("error");
-    expect(q<HTMLButtonElement>("[data-action=send]").disabled).toBe(false);
+    b.focus();
+    await vi.waitFor(() => expect(got).toHaveLength(4));
+    expect(got.slice(1)).toEqual([
+      { type: "busy", busy: true },
+      { type: "status", kind: "error", text: "Session ended" },
+      { type: "focus" },
+    ]);
   });
 
-  it("keeps initial text (retry after failure)", () => {
-    const { b, q } = box({ initialText: "kept" });
-    expect(b.textarea.value).toBe("kept");
-    expect(q<HTMLButtonElement>("[data-action=send]").disabled).toBe(false);
+  it("sizes the frame to its content within the viewport and repositions it", async () => {
+    const { frame, load, reply } = box({
+      anchor: { left: 100, top: 650, width: 200, height: 100 },
+    });
+    vi.spyOn(frame, "getBoundingClientRect").mockImplementation(() =>
+      DOMRect.fromRect({ width: 400, height: parseFloat(frame.style.height) || 0 }),
+    );
+    await load();
+    reply({ type: "size", height: 200 });
+    await vi.waitFor(() => expect(frame.style.height).toBe("200px"));
+    expect(frame.style.top).toBe(`${650 - 8 - 200}px`);
+    reply({ type: "size", height: 5000 });
+    await vi.waitFor(() => expect(frame.style.height).toBe(`${window.innerHeight - 16}px`));
+  });
+
+  it("closes if the frame is navigated away from our page", async () => {
+    const { frame, load, onClose } = box();
+    await load();
+    frame.dispatchEvent(new Event("load"));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -176,16 +174,17 @@ describe("overlay root", () => {
 
 describe("keyboard isolation", () => {
   it("does not let typing in the UI bubble to page handlers", () => {
-    const { b } = box();
+    const o = createOverlay(document, "open");
+    const input = document.createElement("input");
+    o.layer.append(input);
     const page = vi.fn();
     document.addEventListener("keydown", page);
     window.addEventListener("input", page);
-    b.textarea.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "s", bubbles: true, composed: true }),
-    );
-    b.textarea.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "s", bubbles: true, composed: true }));
+    input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
     expect(page).not.toHaveBeenCalled();
     document.removeEventListener("keydown", page);
     window.removeEventListener("input", page);
+    o.destroy();
   });
 });

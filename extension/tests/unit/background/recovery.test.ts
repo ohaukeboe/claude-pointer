@@ -6,6 +6,7 @@ import {
   type BackgroundCall,
 } from "../../../src/content/controller";
 import type { Session } from "../../../../shared/types";
+import { inlineBox } from "../content/inline-box";
 
 const shelf: Session = {
   id: "1-1",
@@ -30,6 +31,7 @@ function setup(handler: (msg: BackgroundCall, n: number) => unknown) {
     doc: document,
     win: window,
     shadowMode: "open",
+    createBox: inlineBox,
     raf: (cb) => (cb(0), 1),
     send: async (m) => {
       calls.push(m);

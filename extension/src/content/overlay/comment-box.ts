@@ -1,6 +1,11 @@
 // Comment box anchored to the selected element (FR-006, FR-007).
 
-import { LIMITS } from "../../../../shared/validate";
+import {
+  FRAME_PAGE,
+  type FrameHandshake,
+  type FrameMessage,
+  type ViewMessage,
+} from "../../frame/protocol";
 import { h } from "./root";
 
 export interface Box {
@@ -42,7 +47,6 @@ export interface CommentBoxOptions {
 
 export interface CommentBox {
   el: HTMLElement;
-  textarea: HTMLTextAreaElement;
   focus(): void;
   setBusy(busy: boolean): void;
   setStatus(kind: "info" | "ok" | "error", text: string): void;
@@ -50,127 +54,90 @@ export interface CommentBox {
   destroy(): void;
 }
 
-const fmt = (n: number) => n.toLocaleString("en-US").replace(/,/g, " ");
-
-export function createCommentBox(o: CommentBoxOptions, doc: Document = document): CommentBox {
-  const textarea = h(doc, "textarea", {
-    "aria-label": "Comment",
-    placeholder: "Describe the issue or suggestion…",
-    rows: "4",
+/**
+ * The box lives in an extension-origin iframe, so page listeners (even capture-phase ones on
+ * window) never see what the user types. We talk to it over a private MessagePort.
+ */
+export function createCommentBox(
+  o: CommentBoxOptions,
+  doc: Document = document,
+  frameUrl: string = browser.runtime.getURL(FRAME_PAGE),
+): CommentBox {
+  const nonce = crypto.randomUUID();
+  const frame = h(doc, "iframe", {
+    class: "comment-frame comment-box",
+    src: `${frameUrl}#${nonce}`,
+    title: "Comment on element",
   });
-  textarea.value = o.initialText ?? "";
-  const status = h(doc, "div", {
-    class: "status",
-    "data-role": "status",
-    role: "status",
-    "aria-live": "polite",
-  });
-  const close = h(
-    doc,
-    "button",
-    { class: "icon", type: "button", "data-action": "close", "aria-label": "Close" },
-    "×",
-  );
-  const add = h(
-    doc,
-    "button",
-    { type: "button", "data-action": "add", hidden: !o.allowAdd },
-    o.addLabel ?? "Add comment",
-  );
-  const del = h(
-    doc,
-    "button",
-    { type: "button", "data-action": "delete", hidden: !o.onDelete },
-    "Delete",
-  );
-  const send = h(
-    doc,
-    "button",
-    { class: "primary", type: "button", "data-action": "send" },
-    "Send to Claude",
-  );
-  const el = h(
-    doc,
-    "section",
-    { class: "panel comment-box", role: "dialog", "aria-label": "Comment on element" },
-    h(
-      doc,
-      "div",
-      { class: "panel-head" },
-      h(doc, "span", { class: "panel-title" }, "Comment"),
-      h(doc, "span", { class: "panel-label", "data-role": "label", title: o.label }, o.label),
-      close,
-    ),
-    textarea,
-    status,
-    h(doc, "div", { class: "actions" }, del, add, send),
-  );
+  const { port1: port, port2 } = new MessageChannel();
+  const post = (m: ViewMessage) => port.postMessage(m);
+  let anchor = o.anchor;
+  let loaded = false;
 
-  let busy = false;
-  let lengthError = false;
-  const text = () => textarea.value.trim();
-  const refresh = () => {
-    const len = text().length;
-    const empty = len === 0;
-    const tooLong = len > LIMITS.commentText;
-    send.disabled = busy || empty || tooLong;
-    add.disabled = send.disabled;
-    if (tooLong) {
-      lengthError = true;
-      setStatus(
-        "error",
-        `Comment is too long (${fmt(len)} / ${fmt(LIMITS.commentText)} characters).`,
-      );
-    } else if (lengthError) {
-      lengthError = false;
-      setStatus("info", "");
-    }
-  };
-  const setStatus = (kind: "info" | "ok" | "error", message: string) => {
-    status.setAttribute("data-kind", kind);
-    status.textContent = message;
-  };
-  const submit = (fn: (t: string) => void) => {
-    refresh();
-    if (!send.disabled) fn(text());
-  };
-
-  textarea.addEventListener("input", refresh);
-  textarea.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
+  frame.addEventListener("load", () => {
+    // A second load means something navigated the frame away from our page: give up.
+    if (loaded) {
       o.onClose();
-    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      submit(o.onSend);
+      return;
     }
+    loaded = true;
+    const handshake: FrameHandshake = { type: "claude-pointer-init", nonce };
+    // URL.origin is "null" for moz-extension: in some engines; never post to that.
+    const { protocol, host } = new URL(frameUrl);
+    frame.contentWindow?.postMessage(handshake, `${protocol}//${host}`, [port2]);
   });
-  send.addEventListener("click", () => submit(o.onSend));
-  add.addEventListener("click", () => submit(o.onAdd));
-  close.addEventListener("click", () => o.onClose());
-  del.addEventListener("click", () => o.onDelete?.());
-  refresh();
+  port.onmessage = (e: MessageEvent<FrameMessage>) => {
+    const m = e.data;
+    switch (m.type) {
+      case "send":
+        o.onSend(m.text);
+        return;
+      case "add":
+        o.onAdd(m.text);
+        return;
+      case "delete":
+        o.onDelete?.();
+        return;
+      case "close":
+        o.onClose();
+        return;
+      case "size":
+        frame.style.height = `${Math.min(m.height, window.innerHeight - 2 * GAP)}px`;
+        reposition(anchor);
+        return;
+    }
+  };
+  post({
+    type: "init",
+    label: o.label,
+    allowAdd: o.allowAdd,
+    addLabel: o.addLabel,
+    canDelete: !!o.onDelete,
+    initialText: o.initialText,
+  });
 
-  const reposition = (anchor: Box) => {
-    const r = el.getBoundingClientRect();
+  const reposition = (next: Box) => {
+    anchor = next;
+    const r = frame.getBoundingClientRect();
     const size = { width: r.width || 400, height: r.height || 200 };
-    const pos = positionBox(anchor, size, { width: window.innerWidth, height: window.innerHeight });
-    el.style.left = `${pos.left}px`;
-    el.style.top = `${pos.top}px`;
+    const pos = positionBox(next, size, { width: window.innerWidth, height: window.innerHeight });
+    frame.style.left = `${pos.left}px`;
+    frame.style.top = `${pos.top}px`;
   };
   reposition(o.anchor);
 
   return {
-    el,
-    textarea,
-    focus: () => textarea.focus(),
-    setBusy: (b) => {
-      busy = b;
-      textarea.readOnly = b;
-      refresh();
+    el: frame,
+    focus: () => {
+      frame.focus();
+      post({ type: "focus" });
     },
-    setStatus,
+    setBusy: (busy) => post({ type: "busy", busy }),
+    setStatus: (kind, text) => post({ type: "status", kind, text }),
     reposition,
-    destroy: () => el.remove(),
+    destroy: () => {
+      port.close();
+      frame.remove();
+    },
   };
 }

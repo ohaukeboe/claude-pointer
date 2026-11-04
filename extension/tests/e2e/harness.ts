@@ -166,6 +166,34 @@ export async function startHarness(): Promise<Harness> {
     }
   };
 
+  /** Run `fn` with the driver switched into `frame`, then switch back to the page. */
+  const inFrame = async <T>(frame: WebElement, fn: () => Promise<T>): Promise<T> => {
+    await driver.switchTo().frame(frame);
+    try {
+      return await fn();
+    } finally {
+      await driver.switchTo().defaultContent();
+    }
+  };
+
+  /**
+   * A stand-in for an element inside the comment frame. Each call re-finds the element in the
+   * frame and leaves the driver on the page, so page-level scripts keep working.
+   */
+  const frameElement = (frame: WebElement, selector: string, index: number): WebElement => {
+    const act = <T>(fn: (el: WebElement) => Promise<T>) =>
+      inFrame(frame, async () => fn((await driver.findElements(By.css(selector)))[index]!));
+    return {
+      click: () => act((el) => el.click()),
+      sendKeys: (...keys: (string | number | Promise<string | number>)[]) =>
+        act((el) => el.sendKeys(...keys)),
+      getText: () => act((el) => el.getText()),
+      getAttribute: (name: string) => act((el) => el.getAttribute(name)),
+      isDisplayed: () => act((el) => el.isDisplayed()),
+      getRect: () => act((el) => el.getRect()),
+    } as unknown as WebElement;
+  };
+
   const h: Harness = {
     driver,
     baseUrl,
@@ -216,14 +244,25 @@ export async function startHarness(): Promise<Harness> {
       });
     },
     async ui(selector) {
-      const host = await driver.findElement(By.css("claude-pointer-ui"));
-      const shadow = await host.getShadowRoot();
-      return shadow.findElement(By.css(selector));
+      const [el] = await h.uiAll(selector);
+      if (!el) throw new Error(`no ${selector} in picker UI`);
+      return el;
     },
     async uiAll(selector) {
+      await driver.switchTo().defaultContent();
       const hosts = await driver.findElements(By.css("claude-pointer-ui"));
       if (hosts.length === 0) return [];
-      return (await hosts[0]!.getShadowRoot()).findElements(By.css(selector));
+      const shadow = await hosts[0]!.getShadowRoot();
+      const own = await shadow.findElements(By.css(selector));
+      if (own.length) return own;
+      // The comment box lives in an extension frame (claude-pointer-op5); look there too.
+      const frames = await shadow.findElements(By.css("iframe.comment-frame"));
+      if (frames.length === 0) return [];
+      const count = await inFrame(
+        frames[0]!,
+        async () => (await driver.findElements(By.css(selector))).length,
+      );
+      return Array.from({ length: count }, (_, i) => frameElement(frames[0]!, selector, i));
     },
     async waitForUi(selector, timeout = 5000) {
       let found: WebElement | undefined;

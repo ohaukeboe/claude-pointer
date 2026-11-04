@@ -165,6 +165,22 @@ button.icon {
   font-size: 18px;
   line-height: 1;
 }
+.comment-frame {
+  position: fixed;
+  display: block;
+  box-sizing: content-box;
+  width: calc(min(28rem, 100vw - 1rem) - 2px);
+  height: 12rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--cp-border);
+  border-radius: 10px;
+  background: var(--cp-bg);
+  box-shadow: var(--cp-shadow);
+  color-scheme: light dark;
+  pointer-events: auto;
+}
+.comment-frame[hidden] { display: none; }
 .status { min-height: 1.2em; margin-top: 8px; font-size: 13px; color: var(--cp-muted); overflow-wrap: anywhere; }
 .status[data-kind="ok"] { color: var(--cp-ok); }
 .status[data-kind="error"] { color: var(--cp-error); }
@@ -215,4 +231,19 @@ button.icon {
 @media (prefers-reduced-motion: reduce) {
   .outline { transition: none; }
 }
+`;
+
+/** Extra rules inside the comment frame: the iframe itself is the floating panel. */
+export const FRAME_CSS = `
+html, body { margin: 0; background: transparent; color-scheme: light dark; }
+body.layer { position: static; pointer-events: auto; }
+.panel {
+  position: static;
+  width: auto;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+textarea { max-height: 16rem; }
 `;

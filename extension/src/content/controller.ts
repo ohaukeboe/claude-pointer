@@ -6,7 +6,12 @@ import type { SendResult, TargetResult } from "../background/send";
 import { Picker, defaultHitTest, labelFor } from "./picker";
 import { buildSelection } from "./selection";
 import { PendingStore } from "./pending";
-import { createCommentBox, type Box, type CommentBox } from "./overlay/comment-box";
+import {
+  createCommentBox,
+  type Box,
+  type CommentBox,
+  type CommentBoxOptions,
+} from "./overlay/comment-box";
 import { createMarkers, type Markers, type PlacedComment } from "./overlay/markers";
 import { createOutline, type Outline } from "./overlay/outline";
 import { createOverlay, type Overlay } from "./overlay/root";
@@ -21,6 +26,7 @@ export interface ControllerDeps {
   raf?(cb: FrameRequestCallback): number;
   probe?(el: Element): SourceHint | null;
   shadowMode?: ShadowRootMode;
+  createBox?(o: CommentBoxOptions, doc: Document): CommentBox;
 }
 
 const CLOSE_AFTER_DELIVERY_MS = 1500;
@@ -198,7 +204,7 @@ export class Controller {
     const rect = viewportRect(el);
     this.showOutline(el);
     this.box?.destroy();
-    this.box = createCommentBox(
+    this.box = (this.deps.createBox ?? createCommentBox)(
       {
         anchor: rect,
         label: this.label(el),

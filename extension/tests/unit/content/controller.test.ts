@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Controller, type BackgroundCall } from "../../../src/content/controller";
+import { inlineBox } from "./inline-box";
 import type { Session } from "../../../../shared/types";
 
 const shelf: Session = {
@@ -33,6 +34,7 @@ function setup(handler: (msg: BackgroundCall) => unknown) {
     win: window,
     send,
     shadowMode: "open",
+    createBox: inlineBox,
     raf: (cb) => (cb(0), 1),
   });
   controllers.push(c);
@@ -270,6 +272,7 @@ describe("Controller (US1)", () => {
         return ready(m);
       },
       shadowMode: "open",
+      createBox: inlineBox,
       raf: (cb) => (cb(0), 1),
       probe,
     });

@@ -19,6 +19,12 @@
   "background": {
     "scripts": ["background.js"]
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["comment-frame.html"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
     "default_title": "Claude Pointer",
     "default_popup": "popup.html",

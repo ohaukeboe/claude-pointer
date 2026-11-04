@@ -24,19 +24,32 @@ describe("hostile pages", () => {
       `const s = getComputedStyle(arguments[0]);
        const r = arguments[0].getBoundingClientRect();
        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-       return { pos: s.position, radius: s.borderTopLeftRadius, padding: s.paddingTop, hitHost: hit && hit.localName };`,
+       return { pos: s.position, radius: s.borderTopLeftRadius, hitHost: hit && hit.localName };`,
       box,
     )) as Record<string, string>;
     expect(style.pos).toBe("fixed");
     expect(style.radius).toBe("10px");
-    expect(style.padding).toBe("12px");
     expect(style.hitHost).toBe("claude-pointer-ui");
 
-    // Bubble-phase page shortcut handlers do not see keys typed into our UI.
-    // Known limitation: capture-phase listeners on window still do (window.__captured).
+    // No page key listener, bubble or capture phase, sees keys typed into our UI.
     await (await h.ui("textarea")).sendKeys("abc");
     expect(await h.driver.executeScript("return window.__keys")).toEqual([]);
+    expect(await h.driver.executeScript("return window.__captured")).toEqual([]);
     await (await h.ui("textarea")).sendKeys(Key.ESCAPE);
+  });
+
+  it("still opens and sends the comment box on a page whose CSP forbids frames", async () => {
+    const session = await h.startSession("602-1", "/home/u/projects/csp");
+    const tab = await h.open("strict-csp.html");
+    await h.togglePicker(tab);
+    const target = await h.driver.findElement(By.css("#target"));
+    await h.driver.actions().move({ origin: target }).click(target).perform();
+    await (await h.waitForUi("textarea")).sendKeys("csp ok");
+    await (await h.ui("[data-action=send]")).click();
+    await (await h.waitForUi("[data-action=confirm]")).click();
+    await h.driver.wait(async () => session.prompts.length === 1, 3000);
+    expect(session.prompts[0]!.params.content).toContain("Comment: csp ok");
+    await session.close();
   });
 
   it("sends page text as fenced data and bounds huge HTML to 4096 chars", async () => {

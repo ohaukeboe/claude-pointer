@@ -10,6 +10,7 @@ const watch = process.argv.includes("--watch");
 rmSync(outdir, { recursive: true, force: true });
 mkdirSync(outdir, { recursive: true });
 cpSync("popup.html", `${outdir}/popup.html`);
+cpSync("comment-frame.html", `${outdir}/comment-frame.html`);
 const manifest = JSON.parse(readFileSync("manifest.json", "utf8"));
 // e2e only: WebDriver cannot press the toolbar button, so no activeTab grant exists.
 if (e2e) manifest.host_permissions = ["http://127.0.0.1/*", "http://localhost/*"];
@@ -22,6 +23,7 @@ const options = {
     content: "src/content/index.ts",
     "source-probe": "src/page-world/source-probe.ts",
     popup: "src/popup/index.ts",
+    "comment-frame": "src/frame/index.ts",
   },
   outdir,
   bundle: true,

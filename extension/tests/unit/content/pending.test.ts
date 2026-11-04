@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PendingStore, pendingKey } from "../../../src/content/pending";
 import { Controller, type BackgroundCall } from "../../../src/content/controller";
+import { inlineBox } from "./inline-box";
 import { ext } from "../../../src/lib/browser";
 import { makeComment, makeSelection } from "../../../../shared/fixtures";
 import type { Session } from "../../../../shared/types";
@@ -71,6 +72,7 @@ describe("Controller with pending comments (US3)", () => {
       doc: document,
       win: window,
       shadowMode: "open",
+      createBox: inlineBox,
       raf: (cb) => (cb(0), 1),
       send: async (m) => {
         calls.push(m);
