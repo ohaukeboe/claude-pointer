@@ -27,10 +27,12 @@ describe("debug commands", () => {
       dir: join(runtime, "claude-pointer"),
       id: "4-4",
       projectDir: "/p/x",
+      mode: "no-channel",
+      watch: "busy",
     });
     const out: string[] = [];
     await debugList((s) => out.push(s));
-    expect(out[0]).toMatch(/^4-4\tx\t\/p\/x\t/);
+    expect(out[0]).toMatch(/^4-4\tx\t\/p\/x\t\S+\tno-channel\tbusy$/);
     expect(await debugSend("say hello", undefined, (s) => out.push(s))).toBe(0);
     expect(fake.prompts[0]!.params.content).toContain("Comment: say hello");
     await fake.close();

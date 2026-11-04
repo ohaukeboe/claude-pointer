@@ -2,6 +2,7 @@
 
 import type {
   Batch,
+  BatchStatus,
   Comment,
   ErrorCode,
   NativeResponse,
@@ -22,7 +23,7 @@ export type TargetResult =
 export type SendFailureCode = ErrorCode | "no-host";
 
 export type SendResult =
-  | { ok: true; batchId: string; deliveredAt: string }
+  | { ok: true; batchId: string; deliveredAt: string; status: "pushed" | "waiting" }
   | { ok: false; batchId: string; code: SendFailureCode; message: string };
 
 export const NO_HOST_MESSAGE =
@@ -34,6 +35,7 @@ const MESSAGES: Record<ErrorCode, string> = {
   "too-large": "The comments are too long. Shorten them and try again.",
   "unsupported-version": "Update the claude-pointer helper (npx claude-pointer install).",
   "invalid-request": "Claude Pointer sent an invalid request (this is a bug).",
+  "inbox-full": "Claude has 50 unread batches; ask it to pick them up.",
   internal: "Something went wrong while sending.",
 };
 
@@ -113,5 +115,26 @@ export async function sendComments(o: {
     };
   if (!("deliveredAt" in res))
     return { ok: false, batchId: batch.id, code: "internal", message: messageFor("internal") };
-  return { ok: true, batchId: batch.id, deliveredAt: res.deliveredAt };
+  // No `status`: a helper older than feature 002, which always pushes.
+  return {
+    ok: true,
+    batchId: batch.id,
+    deliveredAt: res.deliveredAt,
+    status: res.status ?? "pushed",
+  };
+}
+
+/**
+ * Ask each session for the state of its waiting batches (feature 002 `batch-status`).
+ * Answers `session-gone` for sessions that ended; null when the host is missing.
+ */
+export async function batchStatus(
+  sessionId: string,
+  batchIds: string[],
+): Promise<{ ok: true; statuses: BatchStatus[] } | { ok: false; code: SendFailureCode }> {
+  const res = await callNative({ v: 1, type: "batch-status", sessionId, batchIds });
+  if (!res) return { ok: false, code: "no-host" };
+  if (!res.ok) return { ok: false, code: res.error.code };
+  if (!("statuses" in res)) return { ok: false, code: "internal" };
+  return { ok: true, statuses: res.statuses };
 }

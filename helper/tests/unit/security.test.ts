@@ -27,14 +27,18 @@ describe("security", () => {
     const dir = join(tempDir(), "cp");
     mkdirSync(dir);
     chmodSync(dir, mode);
-    await expect(createListener({ dir, session, onDeliver: vi.fn() })).rejects.toThrow(
-      /group\/world/,
-    );
+    await expect(
+      createListener({ dir, session: () => session, handlers: { deliver: vi.fn() } }),
+    ).rejects.toThrow(/group\/world/);
   });
 
   it("opens no TCP listener (Unix socket only)", async () => {
     const before = tcpListeners();
-    const l = await createListener({ dir: join(tempDir(), "cp"), session, onDeliver: vi.fn() });
+    const l = await createListener({
+      dir: join(tempDir(), "cp"),
+      session: () => session,
+      handlers: { deliver: vi.fn() },
+    });
     const after = tcpListeners();
     const ownInodes = [...after].filter((i) => !before.has(i));
     expect(ownInodes).toEqual([]);

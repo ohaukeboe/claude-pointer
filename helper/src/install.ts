@@ -19,14 +19,46 @@ export interface InstallResult {
   manifestPath: string;
   wrapperPath: string;
   mcpConfigPath: string;
+  noChannelConfigPath: string;
+  settingsPath: string;
 }
 
-function shellQuote(s: string): string {
+export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
+export function configDir(home: string, configHome?: string): string {
+  return join(configHome ?? join(home, ".config"), "claude-pointer");
+}
+
 export function mcpConfigPath(home: string, configHome?: string): string {
-  return join(configHome ?? join(home, ".config"), "claude-pointer", "mcp.json");
+  return join(configDir(home, configHome), "mcp.json");
+}
+
+const MCP_FILE = "mcp.json";
+const NO_CHANNEL_MCP_FILE = "mcp-no-channel.json";
+const SETTINGS_FILE = "settings.json";
+
+function writeJson(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(value, null, 2) + "\n");
+}
+
+/** Claude Code settings passed with `--settings` (contracts/cli.md, research R14). */
+export function claudeSettings(execPath: string, cliPath: string): unknown {
+  const cli = `${shellQuote(execPath)} ${shellQuote(cliPath)}`;
+  return {
+    hooks: {
+      UserPromptSubmit: [{ hooks: [{ type: "command", command: `${cli} notice`, timeout: 5 }] }],
+    },
+    permissions: {
+      allow: [
+        "mcp__claude-pointer__pick_up_comments",
+        "mcp__claude-pointer__watch_comments",
+        `Bash(${cli} wait --session *)`,
+      ],
+    },
+  };
 }
 
 export function install(o: InstallOptions): InstallResult {
@@ -57,23 +89,29 @@ export function install(o: InstallOptions): InstallResult {
     ) + "\n",
   );
 
-  const mcpPath = mcpConfigPath(o.home, o.configHome);
-  mkdirSync(dirname(mcpPath), { recursive: true });
-  writeFileSync(
-    mcpPath,
-    JSON.stringify(
-      { mcpServers: { "claude-pointer": { command: o.execPath, args: [o.cliPath, "channel"] } } },
-      null,
-      2,
-    ) + "\n",
-  );
-  return { manifestPath, wrapperPath, mcpConfigPath: mcpPath };
+  const dir = configDir(o.home, o.configHome);
+  const server = (args: string[]) => ({
+    mcpServers: { "claude-pointer": { command: o.execPath, args: [o.cliPath, ...args] } },
+  });
+  const mcpPath = join(dir, MCP_FILE);
+  const noChannelConfigPath = join(dir, NO_CHANNEL_MCP_FILE);
+  const settingsPath = join(dir, SETTINGS_FILE);
+  writeJson(mcpPath, server(["channel"]));
+  writeJson(noChannelConfigPath, server(["channel", "--no-push"]));
+  writeJson(settingsPath, claudeSettings(o.execPath, o.cliPath));
+  return { manifestPath, wrapperPath, mcpConfigPath: mcpPath, noChannelConfigPath, settingsPath };
 }
 
-export function claudeArgs(mcpPath: string, extra: string[]): string[] {
+/** Arguments for `claude`; `--no-channel` is ours only as the first argument. */
+export function claudeArgs(dir: string, extra: string[]): string[] {
+  const settings = ["--settings", join(dir, SETTINGS_FILE)];
+  if (extra[0] === "--no-channel") {
+    return ["--mcp-config", join(dir, NO_CHANNEL_MCP_FILE), ...settings, ...extra.slice(1)];
+  }
   return [
     "--mcp-config",
-    mcpPath,
+    join(dir, MCP_FILE),
+    ...settings,
     "--dangerously-load-development-channels",
     "server:claude-pointer",
     ...extra,
@@ -82,7 +120,7 @@ export function claudeArgs(mcpPath: string, extra: string[]): string[] {
 
 export function runClaude(extra: string[]): Promise<number> {
   const home = process.env.HOME ?? "";
-  const args = claudeArgs(mcpConfigPath(home, process.env.XDG_CONFIG_HOME), extra);
+  const args = claudeArgs(configDir(home, process.env.XDG_CONFIG_HOME), extra);
   return new Promise((resolve) => {
     const child = spawn("claude", args, { stdio: "inherit" });
     child.on("exit", (code) => resolve(code ?? 1));

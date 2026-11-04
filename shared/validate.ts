@@ -22,7 +22,10 @@ export const LIMITS = {
   batchMax: 50,
   batchBytes: 1024 * 1024,
   promptBytes: 64 * 1024,
+  statusIdsMax: 20,
 } as const;
+
+const SESSION_ID = /^[0-9]+-[0-9]+$/;
 
 const ELLIPSIS = "…";
 const COMMENT_STATES = new Set(["draft", "pending", "sending", "delivered", "failed"]);
@@ -163,6 +166,13 @@ function fail<T>(code: ErrorCode, message: string): Parsed<T> {
   return { ok: false, error: { code, message } };
 }
 
+/** 1–20 non-empty batch ids (contracts/session-socket.md `status`). */
+function parseBatchIds(v: unknown): string[] | null {
+  if (!Array.isArray(v) || v.length < 1 || v.length > LIMITS.statusIdsMax) return null;
+  if (!v.every((id) => isStr(id) && id !== "")) return null;
+  return v as string[];
+}
+
 function checkVersion<T>(v: Obj): Parsed<T> | null {
   if (v.v !== PROTOCOL_VERSION)
     return fail("unsupported-version", `Unsupported protocol version ${String(v.v)}.`);
@@ -190,6 +200,13 @@ export function parseNativeRequest(v: unknown): Parsed<NativeRequest> {
       return fail("invalid-request", "sessionId does not match batch.sessionId.");
     return { ok: true, value: { v: 1, type: "send-batch", sessionId: v.sessionId, batch } };
   }
+  if (v.type === "batch-status") {
+    if (!isStr(v.sessionId) || !SESSION_ID.test(v.sessionId))
+      return fail("invalid-request", "Invalid session id.");
+    const batchIds = parseBatchIds(v.batchIds);
+    if (!batchIds) return fail("invalid-request", "batchIds must hold 1–20 batch ids.");
+    return { ok: true, value: { v: 1, type: "batch-status", sessionId: v.sessionId, batchIds } };
+  }
   return fail("invalid-request", `Unknown request type ${String(v.type)}.`);
 }
 
@@ -203,6 +220,13 @@ export function parseSocketRequest(v: unknown): Parsed<SocketRequest> {
     if (!check.ok) return fail(check.code, check.message);
     return { ok: true, value: { v: 1, type: "deliver", batch: v.batch as Batch } };
   }
+  if (v.type === "status") {
+    const batchIds = parseBatchIds(v.batchIds);
+    if (!batchIds) return fail("invalid-request", "batchIds must hold 1–20 batch ids.");
+    return { ok: true, value: { v: 1, type: "status", batchIds } };
+  }
+  if (v.type === "peek") return { ok: true, value: { v: 1, type: "peek" } };
+  if (v.type === "wait") return { ok: true, value: { v: 1, type: "wait" } };
   return fail("invalid-request", `Unknown request type ${String(v.type)}.`);
 }
 

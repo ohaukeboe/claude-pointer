@@ -123,8 +123,18 @@ li {
 .state-delivered {
   color: var(--ok);
 }
-.state-failed {
+.state-failed,
+.state-not-picked-up {
   color: var(--error);
+}
+.state-picked-up {
+  color: var(--ok);
+}
+.state-waiting {
+  color: var(--muted);
+}
+.history [data-action="resend"] {
+  justify-self: start;
 }
 kbd {
   font:

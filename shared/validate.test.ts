@@ -196,3 +196,66 @@ describe("parseSocketRequest", () => {
     expect(parseSocketRequest({ v: 1, type: "x" })).toMatchObject({ ok: false });
   });
 });
+
+describe("feature 002 requests", () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `b${i}`);
+
+  it("accepts status with 1–20 ids", () => {
+    expect(parseSocketRequest({ v: 1, type: "status", batchIds: ids(1) })).toEqual({
+      ok: true,
+      value: { v: 1, type: "status", batchIds: ["b0"] },
+    });
+    expect(parseSocketRequest({ v: 1, type: "status", batchIds: ids(20) }).ok).toBe(true);
+  });
+
+  it("rejects status with 0 or 21 ids or non-string ids", () => {
+    for (const batchIds of [ids(0), ids(21), [1], "b1", [""]]) {
+      expect(parseSocketRequest({ v: 1, type: "status", batchIds })).toMatchObject({
+        ok: false,
+        error: { code: "invalid-request" },
+      });
+    }
+  });
+
+  it("accepts peek and wait with only v and type", () => {
+    expect(parseSocketRequest({ v: 1, type: "peek" })).toEqual({
+      ok: true,
+      value: { v: 1, type: "peek" },
+    });
+    expect(parseSocketRequest({ v: 1, type: "wait", extra: 1 })).toEqual({
+      ok: true,
+      value: { v: 1, type: "wait" },
+    });
+  });
+
+  it("accepts batch-status with a valid session id and 1–20 ids", () => {
+    expect(
+      parseNativeRequest({ v: 1, type: "batch-status", sessionId: "1-2", batchIds: ids(2) }),
+    ).toEqual({
+      ok: true,
+      value: { v: 1, type: "batch-status", sessionId: "1-2", batchIds: ["b0", "b1"] },
+    });
+  });
+
+  it("rejects batch-status with a bad session id or id list", () => {
+    for (const req of [
+      { sessionId: "../x", batchIds: ids(1) },
+      { sessionId: 3, batchIds: ids(1) },
+      { sessionId: "1-2", batchIds: ids(0) },
+      { sessionId: "1-2", batchIds: ids(21) },
+      { sessionId: "1-2", batchIds: [7] },
+    ]) {
+      expect(parseNativeRequest({ v: 1, type: "batch-status", ...req })).toMatchObject({
+        ok: false,
+        error: { code: "invalid-request" },
+      });
+    }
+  });
+
+  it("still rejects unknown types", () => {
+    expect(parseNativeRequest({ v: 1, type: "peek" })).toMatchObject({
+      ok: false,
+      error: { code: "invalid-request" },
+    });
+  });
+});

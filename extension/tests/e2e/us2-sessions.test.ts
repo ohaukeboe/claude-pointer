@@ -118,4 +118,23 @@ describe("US2 correct session", () => {
     await (await h.ui("textarea")).sendKeys(Key.ESCAPE);
     expect(beta.prompts).toHaveLength(0);
   });
+
+  // Feature 002 T047: each session shows its delivery mode.
+  it("labels each session in the chooser with its delivery mode", async () => {
+    const pushed = await h.startSession("203-1", join(projects, "gamma"), "2026-10-06T10:00:00Z");
+    const waiting = await h.startSession("204-1", join(projects, "delta"), "2026-10-06T11:00:00Z");
+    waiting.mode = "no-channel";
+    const tab = await h.openUrl(devUrl);
+    await h.togglePicker(tab);
+    await comment("modes");
+    await h.waitForUi(".session-chooser");
+    const a = await (await h.ui("[data-session='203-1']")).getText();
+    const b = await (await h.ui("[data-session='204-1']")).getText();
+    expect(a).toContain("channel");
+    expect(a).not.toContain("no channel");
+    expect(b).toContain("no channel");
+    await (await h.ui("[data-action=cancel]")).click();
+    await (await h.ui("textarea")).sendKeys(Key.ESCAPE);
+    expect(pushed.prompts).toHaveLength(0);
+  });
 });

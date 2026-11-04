@@ -59,17 +59,20 @@ afterEach(async () => {
 });
 
 describe("channel server", () => {
-  it("declares claude/channel and no tools", async () => {
+  // Feature 002 contracts/mcp-server.md: tools and prompts are always declared.
+  it("declares claude/channel, tools and prompts", async () => {
     const { client } = await setup();
     const caps = client.getServerCapabilities();
     expect(caps?.experimental?.["claude/channel"]).toEqual({});
-    expect(caps?.tools).toBeUndefined();
+    expect(caps?.tools).toBeDefined();
+    expect(caps?.prompts).toBeDefined();
   });
 
   it("sends the contract instructions verbatim", async () => {
     const { client } = await setup();
     expect(INSTRUCTIONS).toBe(CONTRACT_INSTRUCTIONS);
-    expect(client.getInstructions()).toBe(CONTRACT_INSTRUCTIONS);
+    // Feature 002 appends the inbox paragraph after the unchanged feature 001 text.
+    expect(client.getInstructions()!.startsWith(CONTRACT_INSTRUCTIONS + "\n\n")).toBe(true);
   });
 
   it("delivers a batch as notifications/claude/channel with meta and documented content", async () => {
@@ -154,7 +157,8 @@ describe("channel server", () => {
     expect(notes).toHaveLength(0);
   });
 
-  it("is idempotent by batch.id within 10 minutes", async () => {
+  // Feature 002 research R16: the inbox remembers batch ids, so a retry never pushes twice.
+  it("is idempotent by batch.id, also after 10 minutes", async () => {
     let t = 1_000_000;
     const { channel, notes } = await setup(() => t);
     const batch = makeBatch();
@@ -167,7 +171,7 @@ describe("channel server", () => {
     t += 2 * 60_000;
     await request(channel.socketPath, { v: 1, type: "deliver", batch });
     await flush();
-    expect(notes).toHaveLength(2);
+    expect(notes).toHaveLength(1);
   });
 });
 

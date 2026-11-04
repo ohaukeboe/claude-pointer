@@ -1,6 +1,11 @@
 // Session chooser shown before the first send from a site (FR-010, FR-012).
 
-import type { Session, SessionSuggestion, SuggestionReason } from "../../../../shared/types";
+import type {
+  DeliveryMode,
+  Session,
+  SessionSuggestion,
+  SuggestionReason,
+} from "../../../../shared/types";
 import { h } from "./root";
 
 export const REASON_LABEL: Record<SuggestionReason, string> = {
@@ -8,6 +13,17 @@ export const REASON_LABEL: Record<SuggestionReason, string> = {
   "name-match": "name match",
   recent: "most recent",
 };
+
+/** Feature 002: how comments reach the session. */
+export const MODE_LABEL: Record<DeliveryMode, string> = {
+  channel: "channel",
+  "no-channel": "no channel",
+};
+
+/** ` · channel`, or empty for sessions of a helper older than feature 002. */
+export function modeSuffix(session: Session): string {
+  return session.mode ? ` · ${MODE_LABEL[session.mode]}` : "";
+}
 
 export interface ChooserOptions {
   suggestions: SessionSuggestion[];
@@ -91,7 +107,12 @@ export function createChooser(o: ChooserOptions, doc: Document = document): Choo
               { class: "session-name" },
               s.session.projectName,
               " ",
-              h(doc, "span", { class: "session-reason" }, `· ${REASON_LABEL[s.reason]}`),
+              h(
+                doc,
+                "span",
+                { class: "session-reason" },
+                `· ${REASON_LABEL[s.reason]}${modeSuffix(s.session)}`,
+              ),
             ),
             h(doc, "span", { class: "session-dir" }, s.session.projectDir),
           ),

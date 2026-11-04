@@ -12,7 +12,9 @@ It works like the select-and-comment flow in Claude Design, but on any site you 
 Firefox extension ──native messaging──▶ claude-pointer native-host (one per request)
                                           │ Unix socket in $XDG_RUNTIME_DIR/claude-pointer/ (mode 0700)
                                           ▼
-                     claude-pointer channel (one per session) ──MCP channel──▶ Claude Code
+                     claude-pointer channel (one per session) ──MCP──▶ Claude Code
+                                          ├─ channel event (channel mode)
+                                          └─ inbox, read with pick_up_comments (both modes)
 ```
 
 - Each opted-in Claude Code session starts its own `claude-pointer channel` MCP server. The
@@ -29,8 +31,9 @@ Firefox extension ──native messaging──▶ claude-pointer native-host (on
 ## Requirements
 
 - Linux, Firefox 140 or later, Node.js 24 or later.
-- Claude Code with channels support (research preview), logged in with a claude.ai account or
-  a Console API key.
+- Claude Code, logged in with a claude.ai account or a Console API key. Channels (research
+  preview) are optional: without them, use `--no-channel` (see
+  [Without channels](#without-channels)).
 
 ## Install
 
@@ -44,7 +47,12 @@ node helper/dist/cli.js install
 
 - `~/.mozilla/native-messaging-hosts/claude_pointer.json` (Firefox native host manifest),
 - `~/.local/share/claude-pointer/native-host` (wrapper script it points to),
-- `~/.config/claude-pointer/mcp.json` (MCP config for the channel server).
+- `~/.config/claude-pointer/mcp.json` (MCP config for the channel server),
+- `~/.config/claude-pointer/mcp-no-channel.json` (the same server without channel events),
+- `~/.config/claude-pointer/settings.json` (Claude Code settings the launcher passes with
+  `--settings`: the prompt hook and permissions for the claude-pointer tools).
+
+Run `install` again after updating claude-pointer, so these files match the new version.
 
 The wrapper uses the absolute path of the current `node`. On NixOS, run `install` again after
 Node.js changes store path.
@@ -60,9 +68,10 @@ and select `extension/dist/manifest.json`.
    node /path/to/claude-pointer/helper/dist/cli.js claude
    ```
 
-   This runs `claude --mcp-config ~/.config/claude-pointer/mcp.json
-   --dangerously-load-development-channels server:claude-pointer`. Extra arguments are passed
-   on to `claude`.
+   This runs `claude --mcp-config ~/.config/claude-pointer/mcp.json --settings
+   ~/.config/claude-pointer/settings.json --dangerously-load-development-channels
+   server:claude-pointer`. Extra arguments are passed on to `claude`. On an account without
+   channels, add `--no-channel` as the first argument.
 
 2. Open your site, then press **Ctrl+Shift+Y** (or the toolbar button → **Pick element**).
 3. Hover to highlight an element and click it. **Alt+↑** / **Alt+↓** select the parent or
@@ -80,6 +89,32 @@ node helper/dist/cli.js debug-list
 node helper/dist/cli.js debug-send --text "say hello"
 ```
 
+## Without channels
+
+Some accounts have channels turned off. Start the session with `--no-channel` instead:
+
+```bash
+node /path/to/claude-pointer/helper/dist/cli.js claude --no-channel
+```
+
+Comments you send then wait in the session's inbox. The popup shows them as **Waiting**, then
+**Picked up** once Claude has read them. Claude reads them in one of three ways:
+
+- **On request**: type `/mcp__claude-pointer__comments`.
+- **Watching**: type `/mcp__claude-pointer__watch` once per session. Claude runs a background
+  command that ends when a comment arrives, so Claude starts working without you typing.
+  Watching stops after 8 hours with no comment, or when you ask Claude to stop watching. The
+  popup shows whether the session is watching.
+- **Notice**: when comments wait and you type any prompt, Claude is told how many wait and from
+  which pages, and offers to read them.
+
+A session holds at most 50 unread batches; further sends fail until Claude picks them up. If a
+session ends before Claude reads its comments, the popup shows **Not picked up** and
+**Resend** puts the comments back on their page.
+
+Channel-mode sessions keep comments in the inbox too, so `/mcp__claude-pointer__comments` also
+works when a session was started without `--no-channel` by mistake.
+
 ## Security model
 
 - No TCP port is opened. Sessions listen on Unix sockets in a directory only your user can
@@ -90,6 +125,8 @@ node helper/dist/cli.js debug-send --text "say hello"
 - Page content is untrusted. It is sent inside a fenced `page-data` block, script and style
   bodies and password values are removed, and the channel instructions tell Claude never to
   follow instructions found in it.
+- The `wait` and `notice` commands print counts and page addresses only; comment text and page
+  data reach Claude only through `pick_up_comments` or a channel event, inside the fenced block.
 - Known limitation: a page script that listens for key presses on `window` in the capture
   phase can see what you type into the comment box.
 
@@ -116,4 +153,5 @@ End-to-end tests need `firefox` and `geckodriver` on `PATH`. On NixOS:
 nix-shell -p firefox geckodriver --run 'npm run check'
 ```
 
-Design documents live in `specs/001-element-comment-picker/`.
+Design documents live in `specs/001-element-comment-picker/` and
+`specs/002-no-channel-delivery/`.

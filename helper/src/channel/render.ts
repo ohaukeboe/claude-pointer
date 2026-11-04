@@ -11,7 +11,7 @@ const LABEL_MAX = 100;
 const FENCE_LINE = /^\s{0,3}(`{3,}|~{3,})/;
 
 /** Page-controlled text shown outside the fence: one line, no control characters. */
-function oneLine(value: string): string {
+export function oneLine(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ");
 }
 
@@ -88,4 +88,13 @@ export function buildNotification(batch: Batch): RenderResult {
       },
     },
   };
+}
+
+export const ALREADY_PUSHED = "(Already delivered by the channel; skip if you have handled it.)";
+
+/** Text `pick_up_comments` returns for the taken batches (contracts/mcp-server.md). */
+export function renderPickUp(entries: { batch: Batch; pushed: boolean }[]): string {
+  return entries
+    .map((e) => (e.pushed ? `${ALREADY_PUSHED}\n` : "") + renderPrompt(e.batch))
+    .join("\n\n");
 }

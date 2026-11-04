@@ -112,6 +112,19 @@ describe("Controller (US1)", () => {
     expect(c.active).toBe(false);
   });
 
+  it("says the comment waits for Claude when the session holds it (feature 002)", async () => {
+    const { c, q, pick, typeAndSend } = setup((msg) => {
+      if (msg.type === "send")
+        return { ok: true, batchId: msg.batchId, deliveredAt: "t", status: "waiting" };
+      return ready(msg);
+    });
+    c.start();
+    pick("#queue");
+    await typeAndSend("x");
+    expect(q("[data-role=status]").textContent).toBe("Waiting for Claude in shelf");
+    expect(q("[data-role=status]").getAttribute("data-kind")).toBe("ok");
+  });
+
   it("asks which session to use on first send, then remembers it", async () => {
     const { c, q, calls, pick } = setup((msg) => {
       if (msg.type === "resolve-target")

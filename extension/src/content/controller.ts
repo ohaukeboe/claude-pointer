@@ -402,7 +402,12 @@ export class Controller {
       await this.store?.clear();
       this.pending = [];
       this.renderMarkers();
-      box.setStatus("ok", `Delivered to ${session.projectName}`);
+      box.setStatus(
+        "ok",
+        res.status === "waiting"
+          ? `Waiting for Claude in ${session.projectName}`
+          : `Delivered to ${session.projectName}`,
+      );
       this.timers.push(setTimeout(() => this.stop(), CLOSE_AFTER_DELIVERY_MS));
       return;
     }

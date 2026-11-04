@@ -6,10 +6,11 @@ import { errorResponse } from "../../../shared/types";
 
 export const SOCKET_TIMEOUT_MS = 1500;
 
+/** `timeoutMs: null` waits without limit (used by `claude-pointer wait`). */
 export function request(
   socketPath: string,
   message: SocketRequest,
-  timeoutMs = SOCKET_TIMEOUT_MS,
+  timeoutMs: number | null = SOCKET_TIMEOUT_MS,
 ): Promise<unknown | ErrorResponse> {
   return new Promise((resolve) => {
     let buf = "";
@@ -17,15 +18,19 @@ export function request(
     const finish = (value: unknown) => {
       if (done) return;
       done = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       sock.destroy();
       resolve(value);
     };
     const sock = createConnection(socketPath);
-    const timer = setTimeout(
-      () => finish(errorResponse("timeout", `No answer from session within ${timeoutMs} ms.`)),
-      timeoutMs,
-    );
+    const timer =
+      timeoutMs === null
+        ? null
+        : setTimeout(
+            () =>
+              finish(errorResponse("timeout", `No answer from session within ${timeoutMs} ms.`)),
+            timeoutMs,
+          );
     sock.on("connect", () => sock.write(JSON.stringify(message) + "\n"));
     sock.on("data", (d) => {
       buf += d.toString("utf8");

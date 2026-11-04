@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { EXTENSION_ID, claudeArgs, install, mcpConfigPath } from "../../../src/install";
+import { EXTENSION_ID, claudeArgs, configDir, install, mcpConfigPath } from "../../../src/install";
 import { tempDir } from "../../support/tmp";
 
 describe("install", () => {
@@ -38,17 +38,62 @@ describe("install", () => {
   });
 });
 
+describe("install (feature 002)", () => {
+  it("writes the no-channel MCP config and settings.json", () => {
+    const home = tempDir();
+    const r = install({ home, execPath: "/nix/store/x/bin/node", cliPath: "/opt/cli.js" });
+    expect(r.noChannelConfigPath).toBe(join(home, ".config/claude-pointer/mcp-no-channel.json"));
+    expect(r.settingsPath).toBe(join(home, ".config/claude-pointer/settings.json"));
+    const mcp = JSON.parse(readFileSync(r.noChannelConfigPath, "utf8"));
+    expect(mcp.mcpServers["claude-pointer"]).toEqual({
+      command: "/nix/store/x/bin/node",
+      args: ["/opt/cli.js", "channel", "--no-push"],
+    });
+    const settings = JSON.parse(readFileSync(r.settingsPath, "utf8"));
+    expect(settings.permissions.allow).toContain("mcp__claude-pointer__pick_up_comments");
+    expect(settings.permissions.allow).toContain("mcp__claude-pointer__watch_comments");
+    expect(settings.permissions.allow).toContain(
+      "Bash('/nix/store/x/bin/node' '/opt/cli.js' wait --session *)",
+    );
+    expect(settings.hooks.UserPromptSubmit[0].hooks[0]).toEqual({
+      type: "command",
+      command: "'/nix/store/x/bin/node' '/opt/cli.js' notice",
+      timeout: 5,
+    });
+  });
+});
+
 describe("claude launcher", () => {
-  it("passes the MCP config and development channel flag", () => {
-    expect(claudeArgs("/h/.config/claude-pointer/mcp.json", ["--model", "opus"])).toEqual([
+  it("passes the MCP config, settings and development channel flag by default", () => {
+    expect(claudeArgs("/h/.config/claude-pointer", ["--model", "opus"])).toEqual([
       "--mcp-config",
       "/h/.config/claude-pointer/mcp.json",
+      "--settings",
+      "/h/.config/claude-pointer/settings.json",
       "--dangerously-load-development-channels",
       "server:claude-pointer",
       "--model",
       "opus",
     ]);
     expect(mcpConfigPath("/h")).toBe("/h/.config/claude-pointer/mcp.json");
+    expect(configDir("/h", "/x")).toBe("/x/claude-pointer");
+  });
+
+  it("starts in no-channel mode when --no-channel comes first", () => {
+    expect(claudeArgs("/c", ["--no-channel", "-c"])).toEqual([
+      "--mcp-config",
+      "/c/mcp-no-channel.json",
+      "--settings",
+      "/c/settings.json",
+      "-c",
+    ]);
+  });
+
+  it("passes --no-channel on when it is not the first argument", () => {
+    expect(claudeArgs("/c", ["-c", "--no-channel"]).slice(-2)).toEqual(["-c", "--no-channel"]);
+    expect(claudeArgs("/c", ["-c", "--no-channel"])).toContain(
+      "--dangerously-load-development-channels",
+    );
   });
 });
 
@@ -71,7 +116,7 @@ describe("runClaude", () => {
     try {
       expect(await runClaude(["-c"])).toBe(3);
       expect(read(log, "utf8").trim()).toBe(
-        "--mcp-config /h/.config/claude-pointer/mcp.json --dangerously-load-development-channels server:claude-pointer -c",
+        "--mcp-config /h/.config/claude-pointer/mcp.json --settings /h/.config/claude-pointer/settings.json --dangerously-load-development-channels server:claude-pointer -c",
       );
       process.env.PATH = tempDir();
       expect(await runClaude([])).toBe(127);

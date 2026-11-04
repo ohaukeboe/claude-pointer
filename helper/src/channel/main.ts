@@ -17,13 +17,25 @@ export function currentSession(procRoot = "/proc"): Session {
   };
 }
 
-export async function runChannel(): Promise<void> {
+/** `channel [--no-push]` (specs/002-no-channel-delivery/contracts/cli.md). */
+export function parseChannelArgs(args: string[]): { push: boolean } {
+  let push = true;
+  for (const arg of args) {
+    if (arg === "--no-push") push = false;
+    else throw new Error(`channel: unknown argument ${arg}`);
+  }
+  return { push };
+}
+
+export async function runChannel(args: string[] = []): Promise<void> {
+  const { push } = parseChannelArgs(args);
   // Install shutdown handlers before the socket exists; a signal during start-up waits for
   // start-up to finish and then removes the socket.
   const starting = startChannel({
     transport: new StdioServerTransport(),
     dir: socketDir(),
     session: currentSession(),
+    push,
   });
   let closing = false;
   const shutdown = async () => {

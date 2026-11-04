@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { currentSession } from "../../../src/channel/main";
+import { currentSession, parseChannelArgs } from "../../../src/channel/main";
 import { tempDir } from "../../support/tmp";
 
 describe("currentSession", () => {
@@ -17,5 +17,16 @@ describe("currentSession", () => {
     expect(s.id).toBe(`${process.ppid}-555`);
     expect(s.projectDir).toBe(process.cwd());
     expect(s.projectName).toBe(basename(process.cwd()));
+  });
+});
+
+describe("parseChannelArgs", () => {
+  it("pushes by default and not with --no-push", () => {
+    expect(parseChannelArgs([])).toEqual({ push: true });
+    expect(parseChannelArgs(["--no-push"])).toEqual({ push: false });
+  });
+
+  it("rejects unknown arguments", () => {
+    expect(() => parseChannelArgs(["--nope"])).toThrow(/--nope/);
   });
 });

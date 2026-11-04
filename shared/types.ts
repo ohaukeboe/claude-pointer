@@ -58,11 +58,18 @@ export interface Batch {
   comments: Comment[];
 }
 
+export type DeliveryMode = "channel" | "no-channel";
+
+export type WatchState = "off" | "waiting" | "busy" | "gap";
+
 export interface Session {
   id: string;
   projectDir: string;
   projectName: string;
   startedAt: string;
+  /** Absent when the session runs a helper older than feature 002. */
+  mode?: DeliveryMode;
+  watch?: WatchState;
 }
 
 export type SuggestionReason = "port-owner" | "name-match" | "recent";
@@ -81,7 +88,13 @@ export interface SiteBinding {
 }
 
 export type ErrorCode =
-  "session-gone" | "timeout" | "invalid-request" | "too-large" | "unsupported-version" | "internal";
+  | "session-gone"
+  | "timeout"
+  | "invalid-request"
+  | "too-large"
+  | "unsupported-version"
+  | "inbox-full"
+  | "internal";
 
 export interface ProtocolError {
   code: ErrorCode;
@@ -121,10 +134,20 @@ export interface DeliveredResponse {
   ok: true;
   batchId: string;
   deliveredAt: string;
+  /** "pushed": sent as a channel event; "waiting": held for pick-up. Absent before 002. */
+  status?: "pushed" | "waiting";
 }
 
-export type NativeRequest = ListSessionsRequest | SendBatchRequest;
-export type NativeResponse = ListSessionsResponse | DeliveredResponse | ErrorResponse;
+export interface BatchStatusRequest {
+  v: 1;
+  type: "batch-status";
+  sessionId: string;
+  batchIds: string[];
+}
+
+export type NativeRequest = ListSessionsRequest | SendBatchRequest | BatchStatusRequest;
+export type NativeResponse =
+  ListSessionsResponse | DeliveredResponse | StatusResponse | ErrorResponse;
 
 // Native host <-> channel server (contracts/session-socket.md)
 
@@ -145,8 +168,58 @@ export interface DeliverRequest {
   batch: Batch;
 }
 
-export type SocketRequest = InfoRequest | DeliverRequest;
-export type SocketResponse = InfoResponse | DeliveredResponse | ErrorResponse;
+// Feature 002 (specs/002-no-channel-delivery/contracts/session-socket.md)
+
+export interface StatusRequest {
+  v: 1;
+  type: "status";
+  batchIds: string[];
+}
+
+export type BatchState = "waiting" | "picked-up" | "unknown";
+
+export interface BatchStatus {
+  batchId: string;
+  state: BatchState;
+  at: string | null;
+}
+
+export interface StatusResponse {
+  v: 1;
+  ok: true;
+  statuses: BatchStatus[];
+}
+
+export interface PeekRequest {
+  v: 1;
+  type: "peek";
+}
+
+export interface PeekResponse {
+  v: 1;
+  ok: true;
+  waiting: number;
+  pages: string[];
+}
+
+export interface WaitRequest {
+  v: 1;
+  type: "wait";
+}
+
+export type WaitOutcome = "comments" | "timeout" | "expired" | "stopped" | "replaced";
+
+export interface WaitResponse {
+  v: 1;
+  ok: true;
+  outcome: WaitOutcome;
+  waiting: number;
+}
+
+export type SocketRequest =
+  InfoRequest | DeliverRequest | StatusRequest | PeekRequest | WaitRequest;
+export type SocketResponse =
+  InfoResponse | DeliveredResponse | StatusResponse | PeekResponse | WaitResponse | ErrorResponse;
 
 export function errorResponse(code: ErrorCode, message: string): ErrorResponse {
   return { v: 1, ok: false, error: { code, message } };

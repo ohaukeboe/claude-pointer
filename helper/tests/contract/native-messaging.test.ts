@@ -21,7 +21,7 @@ describe("native host", () => {
     expect(res.ok).toBe(true);
     expect(res.sessions).toHaveLength(1);
     expect(res.sessions[0]!.reason).toBe("recent");
-    expect(res.sessions[0]!.session).toEqual(fake.session);
+    expect(res.sessions[0]!.session).toEqual({ ...fake.session, mode: "channel", watch: "off" });
     expect(JSON.stringify(res)).not.toContain("socketPath");
     expect(JSON.stringify(res)).not.toContain(".sock");
     await fake.close();
@@ -81,5 +81,58 @@ describe("native host", () => {
       { XDG_RUNTIME_DIR: tempDir() },
     );
     expect(res).toMatchObject({ ok: false, error: { code: "invalid-request" } });
+  });
+
+  // specs/002-no-channel-delivery/contracts/native-messaging.md
+  it("passes mode, watch and send status through", async () => {
+    const runtime = tempDir();
+    const dir = join(runtime, "claude-pointer");
+    const fake = await startFakeSession({
+      dir,
+      id: "3-3",
+      projectDir: "/p/c",
+      mode: "no-channel",
+      watch: "waiting",
+    });
+    const listed = (await nativeCall(
+      { v: 1, type: "list-sessions", pageUrl: "https://example.com/", pageTitle: "" },
+      { XDG_RUNTIME_DIR: runtime },
+    )) as { sessions: { session: Record<string, unknown> }[] };
+    expect(listed.sessions[0]!.session).toMatchObject({ mode: "no-channel", watch: "waiting" });
+    const batch = makeBatch({ sessionId: "3-3" });
+    expect(
+      await nativeCall(
+        { v: 1, type: "send-batch", sessionId: "3-3", batch },
+        { XDG_RUNTIME_DIR: runtime },
+      ),
+    ).toMatchObject({ ok: true, batchId: batch.id, status: "waiting" });
+    await fake.close();
+  });
+
+  it("answers batch-status with the session's status answer", async () => {
+    const runtime = tempDir();
+    const dir = join(runtime, "claude-pointer");
+    const fake = await startFakeSession({ dir, id: "4-4", projectDir: "/p/d", mode: "no-channel" });
+    fake.states.set("a", "picked-up");
+    fake.states.set("b", "waiting");
+    const res = (await nativeCall(
+      { v: 1, type: "batch-status", sessionId: "4-4", batchIds: ["a", "b", "c"] },
+      { XDG_RUNTIME_DIR: runtime },
+    )) as { ok: boolean; statuses: { batchId: string; state: string }[] };
+    expect(res.ok).toBe(true);
+    expect(res.statuses.map((s) => [s.batchId, s.state])).toEqual([
+      ["a", "picked-up"],
+      ["b", "waiting"],
+      ["c", "unknown"],
+    ]);
+    await fake.close();
+  });
+
+  it("answers batch-status for a missing session with session-gone", async () => {
+    const res = await nativeCall(
+      { v: 1, type: "batch-status", sessionId: "9-9", batchIds: ["a"] },
+      { XDG_RUNTIME_DIR: tempDir() },
+    );
+    expect(res).toMatchObject({ ok: false, error: { code: "session-gone" } });
   });
 });

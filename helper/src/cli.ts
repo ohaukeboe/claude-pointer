@@ -5,14 +5,20 @@ import { runChannel } from "./channel/main";
 import { debugList, debugSend } from "./debug";
 import { install, runClaude } from "./install";
 import { runNativeHost } from "./native-host/index";
+import { runNotice } from "./notice";
+import { runWait } from "./wait";
 
 const HELP = `Usage: claude-pointer <command>
 
 Commands:
   install                 Register the Firefox native host and write the MCP config
-  claude [args...]        Start Claude Code with the claude-pointer channel
-  channel                 (internal) MCP channel server, started by Claude Code
+  claude [--no-channel] [args...]
+                          Start Claude Code with claude-pointer; --no-channel for accounts
+                          without channels (comments wait for /mcp__claude-pointer__comments)
+  channel [--no-push]     (internal) MCP server, started by Claude Code
   native-host             (internal) Firefox native messaging host
+  wait --session <id>     (internal) Wait for a comment; Claude runs it in the background
+  notice                  (internal) UserPromptSubmit hook: mention waiting comments
   debug-list              List running claude-pointer sessions
   debug-send --text <t> [--session <id>]
                           Send a test comment to a session
@@ -27,8 +33,15 @@ async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   switch (cmd) {
     case "channel":
-      await runChannel();
+      await runChannel(rest);
       return -1; // keep running
+    case "wait":
+      return runWait(rest);
+    case "notice": {
+      const code = await runNotice();
+      process.stdin.destroy(); // a stdin Claude never closes must not keep the hook alive
+      return code;
+    }
     case "native-host":
       await runNativeHost();
       return 0;
@@ -43,7 +56,9 @@ async function main(argv: string[]): Promise<number> {
       console.log(`Native host manifest: ${r.manifestPath}`);
       console.log(`Native host wrapper:  ${r.wrapperPath}`);
       console.log(`MCP config:           ${r.mcpConfigPath}`);
-      console.log("Start a session with: claude-pointer claude");
+      console.log(`MCP config (no chan.): ${r.noChannelConfigPath}`);
+      console.log(`Claude settings:      ${r.settingsPath}`);
+      console.log("Start a session with: claude-pointer claude [--no-channel]");
       return 0;
     }
     case "claude":

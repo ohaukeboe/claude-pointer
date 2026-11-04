@@ -8,7 +8,11 @@ import { socketDir } from "./registry/index";
 export async function debugList(out: (s: string) => void = console.log): Promise<number> {
   const sessions = await discoverSessions(socketDir());
   if (sessions.length === 0) out("No claude-pointer sessions running.");
-  for (const s of sessions) out(`${s.id}\t${s.projectName}\t${s.projectDir}\t${s.startedAt}`);
+  for (const s of sessions) {
+    const mode = s.mode ?? "-";
+    const watch = s.watch ?? "-";
+    out(`${s.id}\t${s.projectName}\t${s.projectDir}\t${s.startedAt}\t${mode}\t${watch}`);
+  }
   return 0;
 }
 

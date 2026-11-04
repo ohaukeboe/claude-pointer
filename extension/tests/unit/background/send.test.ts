@@ -64,7 +64,13 @@ describe("sendComments (US1)", () => {
     }));
     const c = makeComment({ state: "draft" });
     const r = await sendComments({ pageUrl: PAGE, sessionId: "1-1", comments: [c], batchId: "B" });
-    expect(r).toEqual({ ok: true, batchId: "B", deliveredAt: "2026-10-06T10:00:01Z" });
+    // An answer without `status` comes from a helper older than feature 002: pushed.
+    expect(r).toEqual({
+      ok: true,
+      batchId: "B",
+      deliveredAt: "2026-10-06T10:00:01Z",
+      status: "pushed",
+    });
     const sent = spy.mock.calls[0]![0] as {
       type: string;
       sessionId: string;
@@ -128,5 +134,18 @@ describe("sendComments (US1)", () => {
     });
     expect(r).toMatchObject({ ok: false, code: "invalid-request" });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendComments (feature 002)", () => {
+  it("passes the waiting status through", async () => {
+    native(() => ({ v: 1, ok: true, batchId: "B", deliveredAt: "t", status: "waiting" }));
+    const r = await sendComments({
+      pageUrl: PAGE,
+      sessionId: "1-1",
+      comments: [makeComment()],
+      batchId: "B",
+    });
+    expect(r).toEqual({ ok: true, batchId: "B", deliveredAt: "t", status: "waiting" });
   });
 });

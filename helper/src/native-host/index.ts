@@ -61,21 +61,27 @@ export async function handleNativeRequest(
     return { v: 1, ok: true, sessions };
   }
 
-  // send-batch: only ever to the socket named by sessionId (FR-013).
+  // send-batch and batch-status: only ever to the socket named by sessionId (FR-013).
   if (!isSessionId(req.sessionId)) return errorResponse("invalid-request", "Invalid session id.");
-  const res = (await request(socketPathFor(dir, req.sessionId), {
-    v: 1,
-    type: "deliver",
-    batch: req.batch,
-  })) as NativeResponse;
+  const path = socketPathFor(dir, req.sessionId);
+  const res = (await request(
+    path,
+    req.type === "batch-status"
+      ? { v: 1, type: "status", batchIds: req.batchIds }
+      : { v: 1, type: "deliver", batch: req.batch },
+  )) as NativeResponse;
   if (res.ok === false) {
     if (res.error.code === "session-gone") {
-      removeStale(socketPathFor(dir, req.sessionId));
+      removeStale(path);
       return errorResponse("session-gone", "The selected Claude Code session has ended.");
     }
     return res;
   }
-  if ("batchId" in res && res.batchId === req.batch.id) return res;
+  if (req.type === "batch-status") {
+    if ("statuses" in res) return res;
+  } else if ("batchId" in res && res.batchId === req.batch.id) {
+    return res;
+  }
   return errorResponse("internal", "Unexpected answer from the session.");
 }
 
